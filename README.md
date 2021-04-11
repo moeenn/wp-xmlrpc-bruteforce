@@ -6,14 +6,14 @@ Brute-force a WordPress website credentials
 
 ```md
 Usage of ./main:
-  -dict string
+  --dict string
     A text dictionary containing passwords to try (default "dict.txt")
 
-  -url string
+  --url string
     URL to WordPress website to target (without trailing /)
     (default "https://www.wordpress-site.com")
 
-  -user string
+  --user string
     Username to brute-force (default "admin")
 ```
 

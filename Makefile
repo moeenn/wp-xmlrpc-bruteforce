@@ -1,8 +1,8 @@
-build:
-	go build main.go
-
 run:
-	go run main.go
+	go run src/*.go
 
-clean:
-	rm -v main
+build:
+	go build src/*.go
+
+test:
+	go test ./...

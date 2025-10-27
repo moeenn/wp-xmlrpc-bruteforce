@@ -4,86 +4,86 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io/ioutil"
-	"log"
+	"io"
 	"net/http"
 	"strings"
 )
 
-/**
- *  try to login on wordpress xmlrpc endpoint
- *
- */
-func attemptLogin(url string, credentials Credentials) Result {
-	requestBody := generateReqestBody(credentials)
+type Credentials struct {
+	Username string
+	Password string
+}
 
+type Result struct {
+	Credentials
+	Success bool
+}
+
+// try to login on wordpress xmlrpc endpoint.
+func attemptLogin(url string, credentials *Credentials) (*Result, error) {
+	requestBody := generateReqestBody(credentials)
 	body, err := sendRequest(url, requestBody)
 	if err != nil {
-		log.Fatalln(err)
+		return nil, err
 	}
 
-	isSuccess := passOrFail(body)
-	result := Result{
-		Credentials: credentials,
+	isSuccess := passOrFail(*body)
+	result := &Result{
+		Credentials: *credentials,
 		Success:     isSuccess,
 	}
 
-	return result
+	return result, nil
 }
 
-/**
- *  XMRPC protocol expects all requests to use HTTP POST
- *  create the body for for outgoing request using the credentials
- */
-func generateReqestBody(credentials Credentials) string {
+// XMRPC protocol expects all requests to use HTTP POST
+// create the body for for outgoing request using the credentials.
+func generateReqestBody(credentials *Credentials) string {
 	return fmt.Sprintf(`
-	<?xml version="1.0" encoding="utf-8"?>
-  <methodCall>
-  <methodName>wp.getUsersBlogs</methodName>
-  <params>
-    <param>
-      <value><string>%s</string></value>
-    </param>
-    <param>
-      <value><string>%s</string></value>
-    </param>
-  </params>
-  </methodCall>
+<?xml version="1.0" encoding="utf-8"?>
+<methodCall>
+	<methodName>wp.getUsersBlogs</methodName>
+	<params>
+		<param>
+  			<value><string>%s</string></value>
+		</param>
+		<param>
+			<value><string>%s</string></value>
+		</param>
+	</params>
+</methodCall>
   `, credentials.Username, credentials.Password)
 }
 
-/**
- *  fire off a request to the server with the generated request body
- *
- */
-func sendRequest(url string, body string) (string, error) {
+// fire off a request to the server with the generated request body.
+func sendRequest(url string, body string) (*string, error) {
 	bodyBytes := []byte(body)
 	res, err := http.Post(url, "application/xml", bytes.NewBuffer(bodyBytes))
 
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	defer res.Body.Close()
+	defer func() {
+		_ = res.Body.Close()
+	}()
 
 	statusCode := res.StatusCode
 	if statusCode != 200 {
-		message := fmt.Sprintf("Recieved unexpected HTTP Status :: %d \n", statusCode)
-		return "", errors.New(message)
+		message := fmt.Sprintf("recieved unexpected http status: %d", statusCode)
+		return nil, errors.New(message)
 	}
 
-	resBody, err := ioutil.ReadAll(res.Body)
+	resBody, err := io.ReadAll(res.Body)
 	if err != nil {
-		return "", errors.New("Failed to read request Body")
+		return nil, errors.New("failed to read request Body")
 	}
 
-	return string(resBody), nil
+	resString := string(resBody)
+	return &resString, nil
 }
 
-/**
- *  analyze response body to check if the server accepted the credentials
- *
- */
+// analyze response body to check if the server accepted the credentials.
 func passOrFail(body string) bool {
 	return !strings.Contains(body, "faultCode")
 }

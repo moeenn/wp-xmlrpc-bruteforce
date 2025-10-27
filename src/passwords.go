@@ -2,26 +2,27 @@ package main
 
 import (
 	"bufio"
-	"log"
+	"fmt"
 	"os"
 )
 
-/**
- *  get from file one password at a time
- */
-func getPasswords(pwdList string, passwords chan<- string) {
-	file, err := os.Open(pwdList)
+// get from file one password at a time.
+func getPasswords(pwdListFile string) (chan string, error) {
+	pwdChan := make(chan string)
+
+	file, err := os.Open(pwdListFile)
 	if err != nil {
-		log.Fatalln("Failed to open file")
+		return nil, fmt.Errorf("failed to open password lists file")
 	}
-	defer file.Close()
+
+	defer func() {
+		_ = file.Close()
+	}()
 
 	scanner := bufio.NewScanner(file)
-
-	// send one password at a time, into the passwords channel
 	for scanner.Scan() {
-		passwords <- scanner.Text()
+		pwdChan <- scanner.Text()
 	}
 
-	close(passwords)
+	return pwdChan, nil
 }

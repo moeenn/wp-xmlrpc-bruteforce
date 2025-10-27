@@ -1,8 +1,9 @@
 run:
 	go run src/*.go
 
-build:
-	go build src/*.go
 
-test:
-	go test ./...
+build:
+	go build -o exploit src/*.go
+
+
+.PHONY: run

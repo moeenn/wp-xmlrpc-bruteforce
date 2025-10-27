@@ -15,14 +15,14 @@ func getPasswords(pwdListFile string) (chan string, error) {
 		return nil, fmt.Errorf("failed to open password lists file")
 	}
 
-	defer func() {
+	go func() {
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			pwdChan <- scanner.Text()
+		}
 		_ = file.Close()
+		close(pwdChan)
 	}()
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		pwdChan <- scanner.Text()
-	}
 
 	return pwdChan, nil
 }

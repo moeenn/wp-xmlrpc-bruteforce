@@ -1,4 +1,4 @@
-package main
+package internal
 
 import (
 	"bytes"
@@ -20,9 +20,9 @@ type Result struct {
 }
 
 // try to login on wordpress xmlrpc endpoint.
-func attemptLogin(url string, credentials *Credentials) (*Result, error) {
+func AttemptLogin(client *http.Client, url string, credentials *Credentials) (*Result, error) {
 	requestBody := generateReqestBody(credentials)
-	body, err := sendRequest(url, requestBody)
+	body, err := sendRequest(client, url, requestBody)
 	if err != nil {
 		return nil, err
 	}
@@ -56,9 +56,9 @@ func generateReqestBody(credentials *Credentials) string {
 }
 
 // fire off a request to the server with the generated request body.
-func sendRequest(url string, body string) (*string, error) {
+func sendRequest(client *http.Client, url string, body string) (*string, error) {
 	bodyBytes := []byte(body)
-	res, err := http.Post(url, "application/xml", bytes.NewBuffer(bodyBytes))
+	res, err := client.Post(url, "application/xml", bytes.NewBuffer(bodyBytes))
 
 	if err != nil {
 		return nil, err

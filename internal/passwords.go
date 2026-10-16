@@ -1,4 +1,4 @@
-package main
+package internal
 
 import (
 	"bufio"
@@ -7,7 +7,7 @@ import (
 )
 
 // get from file one password at a time.
-func getPasswords(pwdListFile string) (chan string, error) {
+func GetPasswords(pwdListFile string) (chan string, error) {
 	pwdChan := make(chan string)
 
 	file, err := os.Open(pwdListFile)
